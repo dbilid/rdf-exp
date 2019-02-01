@@ -83,6 +83,33 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
         }
 
 
+
+	sql= "PRAGMA page_size = 4096;";
+
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+
+        sql= "PRAGMA cache_size = 1048576;";
+
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+
+        sql= "PRAGMA synchronous = OFF;";
+
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+        sql= "PRAGMA locking_mode = EXCLUSIVE;";
+
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+        sql= "PRAGMA journal_mode = OFF;";
+
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+        sql= "PRAGMA temp_store=2;";
+        sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
+        //createMemoryDB(dbt);
+        //strcpy(sql, "detach database aa;");
+        //sqlite3_exec(dbt, sql, 0, 0, NULL);
+        //strcpy(sql, "PRAGMA query_only = 1;");
+        sqlite3_exec(dbExt, "BEGIN", 0, 0, 0);
+
+
 	getdir(input_dir,files);
 	ofs.open(output_file_name.c_str(), ofstream::out);
 	for (unsigned int file_id = 0; file_id < files.size();file_id++) {
@@ -145,18 +172,24 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 					oid = map_it->second;
 				}
 
-
-				tmp_triple = triple(sid, pid, oid, objectType);
-				tmp_data.push_back(tmp_triple);
+				sqlite3_bind_int64(inserts[pid-1], 1, sid);
+				sqlite3_bind_int64(inserts[pid-1], 2, oid);
+				int rc = sqlite3_step(inserts.at(pid-1));
+				if (rc != SQLITE_DONE) {
+					printf("Commit Failed! error:%i\n", rc);
+				}
+				sqlite3_reset(inserts.at(pid-1));
+				//tmp_triple = triple(sid, pid, oid, objectType);
+				//tmp_data.push_back(tmp_triple);
 				num_rec++;
 				if (num_rec % 1000000 == 0) {
-					this->dump_encoded_data(ofs, tmp_data);
-					tmp_data.clear();
-					cout<<"Finished "<<num_rec<<endl;
+					//this->dump_encoded_data(ofs, tmp_data);
+					//tmp_data.clear();
+					cout<<"Finished reading "<<num_rec<<endl;
 				}
 			}
-			this->dump_encoded_data(ofs, tmp_data);
-			tmp_data.clear();
+			//this->dump_encoded_data(ofs, tmp_data);
+			//tmp_data.clear();
 			fin.close();
 		}catch (const TurtleParser::Exception&) {
 			return ;
@@ -197,6 +230,7 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 		return ;
 	}
 */
+/*
 	sql= "PRAGMA page_size = 4096;";
 
 	sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
@@ -221,8 +255,86 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 	//sqlite3_exec(dbt, sql, 0, 0, NULL);
 	//strcpy(sql, "PRAGMA query_only = 1;");
 	sqlite3_exec(dbExt, "BEGIN", 0, 0, 0);
+*/
+	cout << "Saving dictionaries... ";
+
 	saveDictionaryToDisk(so_map, dbExt, 1);
 	saveDictionaryToDisk(predicate_map, dbExt, 0);
+
+	cout << "Creating inverse properties... ";	
+	unsigned int pId;
+	
+
+	char create[100];
+	char insert[100];
+	for (pId = 1; pId < inserts.size()+1; pId++) {
+		
+		rc = sqlite3_finalize(inserts.at(pId-1));
+		if (rc != SQLITE_OK) {
+
+			fprintf(stderr,
+					"Could not finalize dictionary/properties statement %s",
+					sqlite3_errmsg(dbExt));
+			//sqlite3_close(dbExt);
+
+			return;
+		}
+
+		snprintf(create, sizeof create,
+				"create table ext.invprop%i (o INTEGER, s INTEGER, primary key(o, s)) without rowid;",
+				pId);
+		rc = sqlite3_exec(dbExt, create, 0, 0, NULL);
+
+		if (rc != SQLITE_OK) {
+
+			fprintf(stderr, "Could not create inv property table: %s\n",
+			sqlite3_errmsg(dbExt));
+			//sqlite3_close(dbExt);
+
+			return;
+		}
+
+		snprintf(insert, sizeof insert,
+				"insert into invprop%i select o, s from prop%i; ", pId, pId);
+		rc = sqlite3_exec(dbExt, insert, 0, 0, NULL);
+
+		if (rc != SQLITE_OK) {
+
+			fprintf(stderr, "Could not insert into inv property table: %s\n",
+			sqlite3_errmsg(dbExt));
+			//sqlite3_close(dbExt);
+
+			return;
+		}
+	}
+
+	cout << "Creating indexes... ";
+
+	rc = sqlite3_exec(dbExt,
+			"CREATE UNIQUE INDEX ext.uriindex on dictionary(uri);", 0, 0, NULL);
+
+	if (rc != SQLITE_OK) {
+
+		fprintf(stderr, "Could not create  index on dictionary %s",
+		sqlite3_errmsg(dbExt));
+		//sqlite3_close(dbExt);
+
+		return;
+	}
+	rc = sqlite3_exec(dbExt,
+			"CREATE UNIQUE INDEX ext.uriindex2 on properties(uri);", 0, 0,
+			NULL);
+
+	if (rc != SQLITE_OK) {
+
+		fprintf(stderr, "Could not create  index on properties %s",
+		sqlite3_errmsg(dbExt));
+		//sqlite3_close(dbExt);
+
+		return;
+	}
+
+
 	rc = sqlite3_exec(dbExt, "END", 0, 0, 0);
 	if (rc != SQLITE_OK) {
 		
@@ -241,7 +353,7 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 		cout << "Error(" << rc << ") closing connection ";
 		return;
 	}
-	
+	cout << "Finished!";
 }
 
 void partitioner_store::dump_dictionaries(string file_name) {
