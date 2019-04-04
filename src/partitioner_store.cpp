@@ -43,7 +43,7 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 	profiler.startTimer("load_rdf_data");
 	boost::unordered_map<string, ll>::iterator map_it;
 	ll so_id = 1;
-	ll predicate_id = 1;
+	ll predicate_id = 0;
 	ll num_rec = 0;
 	triple tmp_triple;
 	ofstream ofs;
@@ -70,7 +70,7 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 
                 return ;
         }
-        sql= string("attach database '")+string("/tmp/rdf.db")+string("' as ext;");
+        sql= string("attach database '")+output_file_name+string("/rdf.db")+string("' as ext;");
         //strcpy(sql, "select * from  p0all;");
         rc = sqlite3_exec(dbExt, sql.c_str(), 0, 0, NULL);
 
@@ -172,13 +172,13 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 					oid = map_it->second;
 				}
 
-				sqlite3_bind_int64(inserts[pid-1], 1, sid);
-				sqlite3_bind_int64(inserts[pid-1], 2, oid);
-				int rc = sqlite3_step(inserts.at(pid-1));
+				sqlite3_bind_int64(inserts[pid], 1, sid);
+				sqlite3_bind_int64(inserts[pid], 2, oid);
+				int rc = sqlite3_step(inserts.at(pid));
 				if (rc != SQLITE_DONE) {
 					printf("Commit Failed! error:%i\n", rc);
 				}
-				sqlite3_reset(inserts.at(pid-1));
+				sqlite3_reset(inserts.at(pid));
 				//tmp_triple = triple(sid, pid, oid, objectType);
 				//tmp_data.push_back(tmp_triple);
 				num_rec++;
@@ -267,9 +267,9 @@ void partitioner_store::load_encode_rdf_data(string input_dir, string output_fil
 
 	char create[100];
 	char insert[100];
-	for (pId = 1; pId < inserts.size()+1; pId++) {
+	for (pId = 0; pId < inserts.size(); pId++) {
 		
-		rc = sqlite3_finalize(inserts.at(pId-1));
+		rc = sqlite3_finalize(inserts.at(pId));
 		if (rc != SQLITE_OK) {
 
 			fprintf(stderr,
@@ -465,7 +465,7 @@ void partitioner_store::createNextPropertyTable(sqlite3 *dbExt) {
 	
 	//string create=string("create table ext.prop")+boost::lexical_cast<std::string>(inserts.size()+1)+string(" (s INTEGER, o INTEGER, primary key(s, o)) without rowid;");
 	std::ostringstream create;
-	create << "create table ext.prop" << (inserts.size()+1) << " (s INTEGER, o INTEGER, primary key(s, o)) without rowid;";
+	create << "create table ext.prop" << (inserts.size()) << " (s INTEGER, o INTEGER, primary key(s, o)) without rowid;";
 	//char create[100];
 	//snprintf(create, sizeof create, "%s%i%s", createPrefix, propId,
 	//		createPostfix);
@@ -483,7 +483,7 @@ void partitioner_store::createNextPropertyTable(sqlite3 *dbExt) {
 	//char insert[100];
 	//string insert;
 	std::ostringstream insert;
-        insert << "insert or ignore into ext.prop" << (inserts.size()+1) << " values(?, ?) ;";
+        insert << "insert or ignore into ext.prop" << (inserts.size()) << " values(?, ?) ;";
 	//insert=string("insert or ignore into ext.prop"+boost::lexical_cast<std::string>(inserts.size()+1)+string(" values(?, ?) ;");
 	//snprintf(insert, sizeof insert, "%s%i%s", insertPrefix, propId,
 	//		insertPostfix);
