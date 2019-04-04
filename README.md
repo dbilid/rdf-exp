@@ -16,7 +16,7 @@
        NewFastEncoder <input_dir> <encoded_file_path>
        ```
        
-input_dir is the path of the RDF data files while encoded_file_path is the location where the encoded data will be located. Notice that the dictionaries will be created at the directory of the encoded data. 
+input_dir is the path of the RDF data files while encoded_file_path is the location (directory which must exist) where the sqlite data will be located.
 
 #### License
   *  This Source Code Form is subject to the terms of the Mozilla Public
